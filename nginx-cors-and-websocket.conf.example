@@ -1,0 +1,44 @@
+# Nginx example: CORS on all responses (including 502) + proxy to Node API and Socket.IO
+#
+# 1) Put the "map" block inside http { } (once).
+# 2) Put the "add_header" lines and "location" blocks inside server { } for 172.236.176.175.
+# 3) Node default port: 4004 — change proxy_pass if you use another.
+# 4) Reload nginx: sudo nginx -t && sudo systemctl reload nginx
+#
+# CORS: so browser does not show "CORS Missing Allow Origin" even when proxy returns 502
+# In http { } add:
+#   map $http_origin $cors_origin { default $http_origin; "" "http://172.236.176.175"; }
+# In server { } add the add_header lines and location blocks below:
+add_header Access-Control-Allow-Origin $http_origin always;
+add_header Access-Control-Allow-Credentials "true" always;
+add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH" always;
+add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept" always;
+add_header Access-Control-Max-Age 86400 always;
+
+# API: /metro-backend-new/ -> Node
+location /metro-backend-new/ {
+    rewrite ^/metro-backend-new/(.*) /$1 break;
+    proxy_pass http://127.0.0.1:4004;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 90s;
+    proxy_read_timeout 90s;
+}
+
+# Socket.IO (WebSocket): /socket-new.io/ -> Node
+location /socket-new.io/ {
+    proxy_pass http://127.0.0.1:4004;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 86400;
+    proxy_send_timeout 86400;
+}

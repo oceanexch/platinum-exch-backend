@@ -1,0 +1,1 @@
+require('dotenv').config(); const mongoose = require('mongoose'); const { Script } = require('./src/models/MarketTypeModel'); async function run() { await mongoose.connect(process.env.MONGODB_URI); const s = await Script.findOne({'expiry.0': {: true}}).lean(); console.log(JSON.stringify(s, null, 2)); process.exit(0); } run();

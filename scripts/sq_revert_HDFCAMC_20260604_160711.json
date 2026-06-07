@@ -1,0 +1,12 @@
+[
+  {
+    "_id": "6a2155570e28f4f9ba8f3efe",
+    "userId": "69e460334804bd837215bda1",
+    "scriptName": "HDFCAMC",
+    "label": "HDFCAMC 30JUN2026",
+    "transactionType": "SELL",
+    "quantity": 1200,
+    "price": 2546.1,
+    "createdAt": "2026-06-04T10:37:11.031Z"
+  }
+]

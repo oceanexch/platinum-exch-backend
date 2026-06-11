@@ -1149,11 +1149,12 @@ const CommonStockValidator = {
                 let currentScriptNetLot = 0;
                 
                 // Define match query based on scriptId 999 check - MOVED OUTSIDE the absoluteLotCeiling check
+                // Include BOTH COMPLETED and PENDING transactions in position limit calculations
                 let match;
                 if (targetLimit?.scriptId == '999') {
-                    match = { userId: new mongoose.Types.ObjectId(userId), valanId: vId, transactionStatus: "COMPLETED", marketId: String(marketId), scriptName: String(scriptName) };
+                    match = { userId: new mongoose.Types.ObjectId(userId), valanId: vId, transactionStatus: { $in: ["COMPLETED", "PENDING"] }, marketId: String(marketId), scriptName: String(scriptName) };
                 } else {
-                    match = { userId: new mongoose.Types.ObjectId(userId), valanId: vId, transactionStatus: "COMPLETED", marketId: String(marketId) };
+                    match = { userId: new mongoose.Types.ObjectId(userId), valanId: vId, transactionStatus: { $in: ["COMPLETED", "PENDING"] }, marketId: String(marketId) };
                 }
                 
                 if (absoluteLotCeiling > 0) {
@@ -1203,10 +1204,11 @@ const CommonStockValidator = {
                 }
 
                 // Step 2: Calculate Siloed Position for current settings/range
+                // Include BOTH COMPLETED and PENDING transactions in position limit calculations
                 const baseQuery = {
                     userId: new mongoose.Types.ObjectId(userId),
                     valanId: vId,
-                    transactionStatus: "COMPLETED",
+                    transactionStatus: { $in: ["COMPLETED", "PENDING"] },
                     marketId: String(marketId)
                 };
 

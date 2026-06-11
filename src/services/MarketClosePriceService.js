@@ -4,10 +4,14 @@ const { getAllStocksHash } = require("./RedisService");
 const { saveMarketClosePrices } = require("./SettingService");
 const { MARKET_NAMES } = require("../config/marketConstants");
 
-const capturePricesForMarkets = async (marketIds) => {
+const capturePricesForMarkets = async (marketIds, tradingDate) => {
   try {
     const currentTime = moment().format("HH:mm");
-    console.log(`[Scheduler] Starting price capture for markets: [${marketIds.join(', ')}] at ${currentTime}`);
+    const calendarDate = moment().format("YYYY-MM-DD");
+    // If market closes after midnight, createdAt must reflect the trading day
+    // so getMarketClosePrices(date) queries find it under the correct date.
+    const useTradeDate = tradingDate && tradingDate !== calendarDate;
+    console.log(`[Scheduler] Starting price capture for markets: [${marketIds.join(', ')}] at ${currentTime}${useTradeDate ? ` (tradingDate: ${tradingDate})` : ''}`);
 
     const scripts = await Script.find({
       market_type_id: { $in: marketIds.map(String) }
@@ -106,7 +110,7 @@ const capturePricesForMarkets = async (marketIds) => {
         if (buyRate === 0 && ltp > 0) buyRate = ltp;
         if (sellRate === 0 && ltp > 0) sellRate = ltp;
 
-        pricesToSave.push({
+        const priceDoc = {
           scriptName: finalScriptName,
           expiry: expiryValue,
           symbol: currentSymbol,
@@ -118,7 +122,12 @@ const capturePricesForMarkets = async (marketIds) => {
           high,
           low,
           open
-        });
+        };
+        if (useTradeDate) {
+          // Stamp with end-of-trading-day so date-range queries resolve to the correct day
+          priceDoc.createdAt = moment(tradingDate).endOf("day").toDate();
+        }
+        pricesToSave.push(priceDoc);
       }
     });
 

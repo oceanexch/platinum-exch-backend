@@ -684,8 +684,8 @@ exports.checkLimitSLDisabledInHierarchy = async (userId, parentIds = null, marke
             return true;
         }
 
-        // 2. Check market-specific disability if marketId provided
-        if (marketId) {
+        // 2. Check market-specific disability — only for NOPT (marketId "3")
+        if (marketId && String(marketId) === "3") {
             const marketDisabledCount = await User.countDocuments({
                 _id: { $in: parents },
                 marketAccess: {
@@ -708,6 +708,7 @@ exports.checkLimitSLDisabledInHierarchy = async (userId, parentIds = null, marke
     }
 };
 
+
 /**
  * Check if Short Selling is disabled for a specific user and market
  * @param {string} userId
@@ -717,7 +718,7 @@ exports.checkLimitSLDisabledInHierarchy = async (userId, parentIds = null, marke
 exports.checkShortSellDisabled = async (userId, marketId = null) => {
     try {
         const user = await User.findById(userId).select("marketAccess").lean();
-        if (marketId && user?.marketAccess) {
+        if (marketId && String(marketId) === "3" && user?.marketAccess) {
             const market = user.marketAccess.find(m => String(m.marketId) === String(marketId));
             const ssa = market?.other?.shortSellAllowed;
             // If property not configured for this market, skip check (treat as allowed)
@@ -763,8 +764,8 @@ exports.checkShortSellDisabledInHierarchy = async (userId, parentIds = null, mar
             return false;
         }
 
-        // Check if ANY parent in the hierarchy has short selling disabled for the market
-        if (marketId) {
+        // Check if ANY parent in the hierarchy has short selling disabled — only for NOPT (marketId "3")
+        if (marketId && String(marketId) === "3") {
             const marketDisabledCount = await User.countDocuments({
                 _id: { $in: parents },
                 marketAccess: {
@@ -786,6 +787,7 @@ exports.checkShortSellDisabledInHierarchy = async (userId, parentIds = null, mar
         return true; // Default to Disabled (safe) on error
     }
 };
+
 
 /**
  * Expiry Position Rollover

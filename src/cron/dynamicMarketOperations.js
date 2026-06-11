@@ -3,6 +3,7 @@ const TimeSettingModel = require("../models/TimeSettingModel");
 const MarketOperationsService = require("../services/MarketOperationsService");
 const { chargeNseEqDailyInterest } = require("./nseEqInterestCron");
 const { applyNseEqDeliveryCommission } = require("./nseEqDeliveryCommissionCron");
+const { capturePricesForMarkets } = require("../services/MarketClosePriceService");
 
 // ─── CACHE FOR MARKET TIMINGS ─────────────────────────────────────────────────
 let _cachedMarketTimings = [];
@@ -156,6 +157,19 @@ const executeMarketClose = async (marketId, marketName, endTime) => {
       })()
     );
   }
+
+  // Capture closing prices from Redis → MarketClosePrice collection
+  operations.push(
+    (async () => {
+      try {
+        console.log(`[DynamicMarketOps] [${marketName}] Capturing closing prices...`);
+        await capturePricesForMarkets([marketId], tradingDate);
+        console.log(`[DynamicMarketOps] [${marketName}] ✓ Closing prices captured`);
+      } catch (err) {
+        console.error(`[DynamicMarketOps] [${marketName}] ✗ Closing price capture failed:`, err.message);
+      }
+    })()
+  );
 
   // NSE-EQ specific operations (Market ID: 12)
   if (isNseEq) {

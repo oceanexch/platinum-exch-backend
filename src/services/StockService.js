@@ -19,6 +19,8 @@ const {
 } = require("./RedisService");
 // const { getMultipleStockData } = require("./RedisService");
 const { saveReport, saveLedger } = require("./ProfitLossService");
+const { redisClient } = require("../config/redis");
+const { CLOSING } = require("ws");
 
 const getCurrentWeekDays = () => {
   const today = moment();
@@ -2321,15 +2323,25 @@ exports.getProfitLossWithLivePrices = async (match, level, userId, options = {})
       // If level is 6 (broker), adjust values ONCE per user
       if (level === 6) {
         // Calculate selfNetPrice: (totalM2M × myShare%) + myBrokerage
-        // console.log("Before any chnage :",acc);
-        acc.uplineNetPrice = (Math.abs(acc.uplineNetPrice) + Math.abs(acc.brokerNetPrice));
+        // console.log("final m2m ",finalM2M)
+        // console.log("acc.m2m ...",acc.m2m)
+        // console.log(" acc.selfNetPrice...", acc.selfNetPrice)
+        acc.uplineNetPrice =( ((acc.m2m + acc.selfNetPrice) * -1));
+      
         // acc.uplineNetPrice = -acc.uplineNetPrice;
+
+        // acc.uplineNetPrice = (Math.abs(acc.uplineNetPrice) + Math.abs(acc.brokerNetPrice));
 
         acc.brokerNetPrice = acc.selfNetPrice;
         acc.selfNetPrice = acc.selfNetPrice + acc.selfBrokerage;
-
+        delete acc.downlineNetPrice;
         // Calculate uplineNetPrice: bill - selfNetPrice
         // // Remove brokerNetPrice from response (do not send to frontend)
+      }
+      if(level === 7){
+        // console.log("user lvl 7 found ...")
+        // console.log("data ..",acc.uplineNetPrice,acc.bill)
+        acc.uplineNetPrice = acc.bill;
       }
     }
 
@@ -2537,7 +2549,7 @@ exports.getStocksUserScriptWise = async (match, level, applyExtraMatch) => {
                 {
                   $and: [
                     { $eq: ["$txn.transactionType", "BUY"] },
-                    { $eq: ["$txn.type", "NRM"] },
+                    { $in: ["$txn.type", ["NRM", "CF", "BF", "AUTO_SQ"]] },
                   ],
                 },
                 "$txn.totalOrderPrice",
@@ -2551,7 +2563,7 @@ exports.getStocksUserScriptWise = async (match, level, applyExtraMatch) => {
                 {
                   $and: [
                     { $eq: ["$txn.transactionType", "SELL"] },
-                    { $eq: ["$txn.type", "NRM"] },
+                    { $in: ["$txn.type", ["NRM", "CF", "BF", "AUTO_SQ"]] },
                   ],
                 },
                 "$txn.totalOrderPrice",
@@ -4312,9 +4324,53 @@ exports.setUserPosition = async (uId, scriptId, valanId, flag) => {
         { $set: { ...item } },
         { upsert: true },
       );
+
+      // Emit position-update socket event (fire-and-forget)
+      setImmediate(async () => {
+        try {
+          const user = await userModel.findById(userId).select("accountCode accountName").lean();
+          const posPayload = {
+            userId,
+            accountCode: user?.accountCode || "",
+            accountName: user?.accountName || "",
+            parentIds: item.parentIds || [],
+            scriptId: item.scriptId,
+            scriptName: item.scriptName,
+            label: item.label,
+            marketId: item.marketId,
+            marketName: item.marketName,
+            valanId: item.valanId,
+            buyLot: item.buyLot,
+            sellLot: item.sellLot,
+            buyQuantity: item.buyQuantity,
+            sellQuantity: item.sellQuantity,
+            buyPrice: item.buyPrice,
+            sellPrice: item.sellPrice,
+            isSquaredOff: item.isSquaredOff,
+            deleted: false,
+          };
+          await redisClient.publish("position-update", JSON.stringify(posPayload));
+        } catch (_) {}
+      });
     } else {
       // No completed transactions - delete the position if it exists
       await UserPosition.deleteOne({ userId, scriptId, valanId: vId });
+
+      // Emit position deleted
+      setImmediate(async () => {
+        try {
+          const user = await userModel.findById(userId).select("accountCode accountName parentIds").lean();
+          const delPayload = {
+            userId,
+            accountCode: user?.accountCode || "",
+            accountName: user?.accountName || "",
+            parentIds: user?.parentIds || [],
+            scriptId,
+            deleted: true,
+          };
+          await redisClient.publish("position-update", JSON.stringify(delPayload));
+        } catch (_) {}
+      });
     }
 
     // Invalidate M2M Redis caches after position update

@@ -333,19 +333,6 @@ exports.createUser = async (req, res) => {
     //     .json({ status: false, message: "Broker Partnership exceed" });
     // }
 
-    if (myLevel !== 1) {
-      const myDownlineShare = getUser.partnership?.[myLevel - 1];
-      if (myDownlineShare != null) {
-        const partnershipFloor = 100 - myDownlineShare;
-        if ((+(req.body.partnership) || 0) < partnershipFloor) {
-          return res.status(403).json({
-            status: false,
-            message: `Minimum partnership you can give is ${partnershipFloor}%`
-          });
-        }
-      }
-    }
-
     if (req.body.password && req.body.password.length < 6) {
       return res.status(400).json({
         status: false,
@@ -392,6 +379,73 @@ exports.createUser = async (req, res) => {
     }
 
     const createdLevel = +getUserType.level;
+
+    // 🔗 CREATION LIMITS for levels 2-5 (check direct downline allocation + direct users)
+    if (myLevel >= 2 && myLevel <= 5) {
+      const directUsers = await getDirectUsers(userId); // Get all direct children
+
+      let allocatedMasters = 0;
+      let allocatedCustomers = 0;
+      let directMasterCount = 0;
+      let directCustomerCount = 0;
+
+      // Sum allocated limits + count direct users by type
+      for (const directUser of directUsers) {
+        // Add allocated limits from each direct child
+        allocatedMasters += +(directUser.basicDetails?.masterCount || 0);
+        allocatedCustomers += +(directUser.basicDetails?.customerCount || 0);
+
+        // Count direct users by their level
+        const directUserLevel = directUser.accountType?.level || 0;
+        if (directUserLevel === 5) {
+          directMasterCount++;
+        } else if (directUserLevel === 7) {
+          directCustomerCount++;
+        }
+      }
+
+      // Calculate used limits
+      const usedMasters = allocatedMasters + directMasterCount;
+      const usedCustomers = allocatedCustomers + directCustomerCount;
+
+      // Get creator's max limits
+      const maxMasters = +(getUser.basicDetails?.masterCount || 0);
+      const maxCustomers = +(getUser.basicDetails?.customerCount || 0);
+
+      // Calculate remaining limits
+      const remainingMasters = maxMasters - usedMasters;
+      const remainingCustomers = maxCustomers - usedCustomers;
+
+      // Check if creating new user with limits exceeds remaining
+      const newUserAllocatedMasters = createdLevel === 5 ? 1 + (+(req.body.basicDetails?.masterCount || 0)) : 0;
+      const newUserAllocatedCustomers = createdLevel === 7 ? 1 + (+(req.body.basicDetails?.customerCount || 0)) : 0;
+
+      if (newUserAllocatedMasters > remainingMasters || newUserAllocatedCustomers > remainingCustomers) {
+        return res.status(403).json({
+          status: false,
+          message: 'Cannot create more users. Limit used.',
+          details: {
+            remaining: { masters: remainingMasters, customers: remainingCustomers },
+            requesting: { masters: newUserAllocatedMasters, customers: newUserAllocatedCustomers }
+          }
+        });
+      }
+    }
+
+    // Partnership floor validation - skip for level 6 & 7 (have their own validations)
+    if (myLevel !== 1 && createdLevel !== 6 && createdLevel !== 7) {
+      const myDownlineShare = getUser.partnership?.[myLevel - 1];
+      if (myDownlineShare != null) {
+        const partnershipFloor = 100 - myDownlineShare;
+        if ((+(req.body.partnership) || 0) < partnershipFloor) {
+          return res.status(403).json({
+            status: false,
+            message: `Minimum partnership you can give is ${partnershipFloor}%`
+          });
+        }
+      }
+    }
+
     const myMarginLimits = getUser.marketAccess;
     const myDistributedMarginLimits = await getMarketWiseSum(userId);
     const editUserMarginLimit = req.body.marketAccess;
@@ -984,7 +1038,7 @@ exports.editUser = async (req, res) => {
       return res.status(403).json({ status: false, message: 'Broker Partnership exceed' });
     }
 
-    if (+level !== 1) {
+    if (+level !== 1 && editedLevel !== 6 && editedLevel !== 7) {
       const creatorDownlineShare = getUser.partnership?.[level - 1];
       if (creatorDownlineShare != null) {
         const partnershipFloor = 100 - creatorDownlineShare;

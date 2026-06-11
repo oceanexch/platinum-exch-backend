@@ -55,8 +55,8 @@ const OtherSchema = new Schema({
   ],
   minRateScriptBlock: { type: String, default: '' },
   scriptCount: { type: String, default: '' },
-  shortSellAllowed: { type: Boolean, default: false },
-  limitOrderAllowed: { type: Boolean, default: false },
+  shortSellAllowed: { type: Boolean, default: true },
+  limitOrderAllowed: { type: Boolean, default: true },
   freshLimitAllowed: { type: Number, default: 0 },
   orderBetweenHighLowDisabled: { type: Number, default: 0 },
   isTransferred: { type: Boolean, default: false }

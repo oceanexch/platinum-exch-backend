@@ -568,4 +568,21 @@ async function publishM2MEvent({ userId, parentIds, type, data }) {
   });
 }
 
-module.exports = { StockTransactionEvent, syncLimitTrade, DashboardStockEvent, publishM2MEvent, LimitTradeExecutedEvent };
+async function PositionUpdateEvent({ userId, parentIds, position, accountCode, accountName }) {
+  setImmediate(async () => {
+    try {
+      const payload = {
+        userId,
+        accountCode: accountCode || "",
+        accountName: accountName || "",
+        parentIds: parentIds || [],
+        ...position,
+      };
+      await redisClient.publish("position-update", JSON.stringify(payload));
+    } catch (err) {
+      console.error("❌ PositionUpdateEvent failed:", err);
+    }
+  });
+}
+
+module.exports = { StockTransactionEvent, syncLimitTrade, DashboardStockEvent, publishM2MEvent, LimitTradeExecutedEvent, PositionUpdateEvent };

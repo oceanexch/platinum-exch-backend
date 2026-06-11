@@ -2432,15 +2432,22 @@ exports.manualTrade = async (req, res) => {
     let getValan;
     const dateInput = reqData.tradeDate || reqData.date;
     if (dateInput) {
-      const tradeDate = moment(dateInput).toDate();
+      const tradeDate = moment(dateInput, ['DD-MM-YYYY', moment.ISO_8601]).toDate();
       getValan = await WeekValanModel.findOne({
         startDate: { $lte: tradeDate },
         endDate: { $gte: tradeDate }
       }).lean();
-    }
 
-    if (!getValan) {
+      if (!getValan) {
+        return res.status(400).json({ status: 'false', message: 'No valan found' });
+      }
+    } else {
       getValan = await setGetValanDetails();
+
+      // Valan validity check: only for current week fallback
+      if (moment().format('YYYY-MM-DD') > moment(getValan.endDate).format('YYYY-MM-DD')) {
+        return res.status(400).json({ status: 'false', message: 'No valan found' });
+      }
     }
     services.getValan = getValan;
 
@@ -2471,13 +2478,6 @@ exports.manualTrade = async (req, res) => {
       parentIds: services.parentIds,
       txn_type: reqData.transactionType,
     };
-
-    // Valan validity
-    if (moment().format('YYYY-MM-DD') > moment(getValan.endDate).format('YYYY-MM-DD')) {
-      baseRejectionLog.message = 'No valan found';
-      await saveLog('rejection', baseRejectionLog);
-      return res.status(400).json({ status: 'false', message: 'No valan found' });
-    }
 
     services.getMarket = services.marketAccess.find((mkt) => mkt.marketId == reqData.marketId);
 
@@ -4000,8 +4000,11 @@ exports.bulkDeleteTrade = async (req, res) => {
 
     const mongooseIds = ids.map((id) => new mongoose.Types.ObjectId(id));
 
-    // Fetch userIds and valanIds for cache invalidation before deletion
-    const affectedTrades = await StockTransaction.find({ _id: { $in: mongooseIds } }, { userId: 1, valanId: 1 }).lean();
+    // Fetch trade data before deletion for cache invalidation and logging
+    const affectedTrades = await StockTransaction.find(
+      { _id: { $in: mongooseIds } },
+      { userId: 1, valanId: 1, marketId: 1, scriptId: 1, label: 1, orderType: 1, lot: 1, quantity: 1, transactionType: 1, parentIds: 1, price: 1, orderPrice: 1 }
+    ).lean();
     const uniqueUserValanPairs = [...new Set(affectedTrades.map((t) => `${t.userId}_${t.valanId}`))];
 
     await bulkDeleteTransactions(mongooseIds, type || 'soft', deletedBy);
@@ -4012,14 +4015,30 @@ exports.bulkDeleteTrade = async (req, res) => {
       M2MService.invalidateM2MCache(uId, vId).catch((err) => console.error('Error invalidating M2M cache:', err));
     });
 
-    await saveLog('trade', {
-      action: type === 'hard' ? 'HARD_BULK_DEL' : 'SOFT_BULK_DEL',
-      message: `Bulk ${type || 'soft'} delete for ${ids.length} trades`,
-      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip,
-      time: new Date(),
-      created_by: deletedBy,
-      ids: ids
-    });
+    const logAction = type === 'hard' ? 'HARD_BULK_DEL' : 'SOFT_BULK_DEL';
+    const logMessage = type === 'hard' ? 'Bulk hard deleted' : 'Bulk soft deleted';
+    const logIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+    const logTime = new Date();
+
+    await Promise.all(affectedTrades.map((t) =>
+      saveLog('trade', {
+        action: logAction,
+        userId: t.userId,
+        symbol: t.label,
+        marketId: t.marketId,
+        scriptId: t.scriptId,
+        order_type: t.orderType,
+        lot: t.lot,
+        qty: t.quantity,
+        order_price: t.price ?? t.orderPrice ?? 0,
+        message: logMessage,
+        ip: logIp,
+        time: logTime,
+        parentIds: t.parentIds,
+        created_by: deletedBy,
+        txn_type: t.transactionType
+      })
+    ));
 
     res.status(200).json({ status: true, message: `Bulk ${type || 'soft'} delete successful` });
   } catch (error) {
@@ -4100,6 +4119,7 @@ exports.editTrade = async (req, res) => {
       createdAt,
       message: bodyMessage
     } = req.body;
+    const tradeType = req.body.type;
     label = label.trim();
     if (!userId) {
       userId = effectiveUserId;
@@ -4455,7 +4475,7 @@ exports.editTrade = async (req, res) => {
 
     let netBrokerage = 0;
     let orderBrokerage = 0;
-    if (transactionStatus !== 'PENDING') {
+    if (transactionStatus !== 'PENDING' && tradeType !== 'CF' && tradeType !== 'BF') {
       if (getMarket.brokerage.type == 'lot') {
         const lotFactor = quantity > 0 ? lot / quantity : 0;
         netBrokerage =
@@ -4496,7 +4516,7 @@ exports.editTrade = async (req, res) => {
       quantityType,
       totalOrderPrice,
       basicDetails.brokerPartnership,
-      transactionStatus !== 'PENDING',
+      transactionStatus !== 'PENDING' && tradeType !== 'CF' && tradeType !== 'BF',
       netBrokerage,
       brokerageIntradayPercentage,
       brokerageDeliveryPercentage,
@@ -4775,13 +4795,21 @@ exports.saveLimitStock = async (req, res) => {
     // Normalization
     if (!reqData.userId) reqData.userId = effectiveUserId;
     reqData.createdBy = loginUserId;
-    // Parent Details
-    const services = await getParentDetails(reqData.userId, reqData.marketId);
-    if (!services) return res.status(400).json({ status: 'false', message: 'User details not found' });
 
     const userIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
     reqData.userIp = userIp;
-    // reqData.createdBy already set to loginUserId above
+
+    const lookupKey = reqData.symbol || reqData.scriptId;
+
+    // ===== PHASE 1: Parallel initial data fetch =====
+    const [services, getValan, liveStock] = await Promise.all([
+      getParentDetails(reqData.userId, reqData.marketId),
+      setGetValanDetails(),
+      getLiveStock(lookupKey)
+    ]);
+
+    if (!services) return res.status(400).json({ status: 'false', message: 'User details not found' });
+    services.getValan = getValan;
 
     // ===== PHASE 1.5: M2M Blocked Check =====
     const blockKeys = [`m2m_blocked:${reqData.userId}`];
@@ -4811,76 +4839,20 @@ exports.saveLimitStock = async (req, res) => {
       txn_type: reqData.transactionType
     };
 
-    // 1. Basic Rules
-    const basicValidation = await CommonStockValidator.validateBasicRules(reqData, services);
-    if (!basicValidation.isValid) {
-      baseRejectionLog.message = basicValidation.message;
-      await saveLog('rejection', baseRejectionLog);
-      return res.status(basicValidation.statusCode || 400).json({ status: 'false', message: basicValidation.message });
-    }
-
-    // 2. Stale Data Check
-    const lookupKey = reqData.symbol || reqData.scriptId;
-    const staleValidation = await CommonStockValidator.validateStaleData(reqData.scriptId, lookupKey);
-    if (!staleValidation.isValid) {
-      baseRejectionLog.message = staleValidation.message;
-      await saveLog('rejection', baseRejectionLog);
-      return res.status(400).json({ status: 'false', message: staleValidation.message });
-    }
-
-    // 3. Market Status
-    const getValan = await setGetValanDetails();
-    services.getValan = getValan;
-
-    const marketValidation = await CommonStockValidator.validateMarketStatus(reqData, services);
-    if (!marketValidation.isValid) {
-      baseRejectionLog.message = marketValidation.message;
-      await saveLog('rejection', baseRejectionLog);
-      return res.status(400).json({ status: 'false', message: marketValidation.message });
-    }
-
-    // 4. Quantity Review
-    const qtyValidation = await CommonStockValidator.validateQuantityLimits(
-      reqData.userId,
-      reqData.scriptId,
-      reqData.marketId,
-      reqData.lot,
-      reqData.quantity,
-      reqData.price,
-      services.parentIds,
-      reqData.scriptName,
-      reqData.transactionType,
-      services.getValan?._id
-    );
-    if (!qtyValidation.isValid) {
-      baseRejectionLog.message = qtyValidation.message;
-      await saveLog('rejection', baseRejectionLog);
-      return res.status(400).json({ status: 'false', message: qtyValidation.message });
-    }
-
-    // 4.5 Expiry Status Check
-    const expiryValidation = await CommonStockValidator.validateExpiryStatus(reqData, services);
-    if (!expiryValidation.isValid) {
-      baseRejectionLog.message = expiryValidation.message;
-      await saveLog('rejection', baseRejectionLog);
-      return res.status(400).json({ status: 'false', message: expiryValidation.message });
-    }
-
-    // 5. Valan & Stock Existence
+    // Valan check
     if (moment().format('YYYY-MM-DD') > moment(getValan.endDate).format('YYYY-MM-DD')) {
       baseRejectionLog.message = 'No valan found';
       await saveLog('rejection', baseRejectionLog);
       return res.status(400).json({ status: 'false', message: 'No valan found' });
     }
 
-    const liveStock = await getLiveStock(lookupKey);
+    // Live stock checks
     if (!liveStock) {
       baseRejectionLog.message = 'No stock exists for ' + lookupKey;
       await saveLog('rejection', baseRejectionLog);
       return res.status(400).json({ status: 'false', message: 'No stock exists' });
     }
 
-    // Block trade if Buy or Sell price is 0 (Buyer/Seller only mode)
     if (liveStock.BuyPrice === 0 || liveStock.SellPrice === 0) {
       const side = liveStock.BuyPrice === 0 ? 'Buyer' : 'Seller';
       baseRejectionLog.message = `Trading blocked: Script is in ${side} only mode.`;
@@ -4888,41 +4860,84 @@ exports.saveLimitStock = async (req, res) => {
       return res.status(400).json({ status: 'false', message: baseRejectionLog.message });
     }
 
-    // 6. Limit Order Specifics
+    // Market access check (needed by Phase 3 validators)
     services.getMarket = services.marketAccess.find((mkt) => mkt.marketId == reqData.marketId);
-
     if (!services.getMarket) {
       baseRejectionLog.message = 'Segment is missing';
       await saveLog('rejection', baseRejectionLog);
       return res.status(400).json({ status: 'false', message: 'Segment is missing' });
     }
 
-    // 6a. Position Square-Off Check
-    const squareOffValidation = await CommonStockValidator.validatePositionSquareOff(reqData, services);
+    // ===== PHASE 2: Parallel basic validations =====
+    const [basicValidation, staleValidation, marketValidation, qtyValidation, expiryValidation] = await Promise.all([
+      CommonStockValidator.validateBasicRules(reqData, services),
+      CommonStockValidator.validateStaleData(reqData.scriptId, lookupKey),
+      CommonStockValidator.validateMarketStatus(reqData, services),
+      CommonStockValidator.validateQuantityLimits(
+        reqData.userId,
+        reqData.scriptId,
+        reqData.marketId,
+        reqData.lot,
+        reqData.quantity,
+        reqData.price,
+        services.parentIds,
+        reqData.scriptName,
+        reqData.transactionType,
+        services.getValan?._id
+      ),
+      CommonStockValidator.validateExpiryStatus(reqData, services)
+    ]);
+
+    if (!basicValidation.isValid) {
+      baseRejectionLog.message = basicValidation.message;
+      await saveLog('rejection', baseRejectionLog);
+      return res.status(basicValidation.statusCode || 400).json({ status: 'false', message: basicValidation.message });
+    }
+    if (!staleValidation.isValid) {
+      baseRejectionLog.message = staleValidation.message;
+      await saveLog('rejection', baseRejectionLog);
+      return res.status(400).json({ status: 'false', message: staleValidation.message });
+    }
+    if (!marketValidation.isValid) {
+      baseRejectionLog.message = marketValidation.message;
+      await saveLog('rejection', baseRejectionLog);
+      return res.status(400).json({ status: 'false', message: marketValidation.message });
+    }
+    if (!qtyValidation.isValid) {
+      baseRejectionLog.message = qtyValidation.message;
+      await saveLog('rejection', baseRejectionLog);
+      return res.status(400).json({ status: 'false', message: qtyValidation.message });
+    }
+    if (!expiryValidation.isValid) {
+      baseRejectionLog.message = expiryValidation.message;
+      await saveLog('rejection', baseRejectionLog);
+      return res.status(400).json({ status: 'false', message: expiryValidation.message });
+    }
+
+    // ===== PHASE 3: Parallel advanced validations =====
+    const [squareOffValidation, m2mValidation, marginValidation, limitOrderValidation] = await Promise.all([
+      CommonStockValidator.validatePositionSquareOff(reqData, services),
+      CommonStockValidator.validateM2MLimits(reqData, services),
+      CommonStockValidator.validateMarginLimits(reqData, services),
+      LimitOrderValidator.validate(reqData, services, liveStock)
+    ]);
+
     if (!squareOffValidation.isValid) {
       baseRejectionLog.message = squareOffValidation.message;
       await saveLog('rejection', baseRejectionLog);
       return res.status(400).json({ status: 'false', message: squareOffValidation.message });
     }
-
-    // 6b. M2M Profit/Loss Limit Check
-    const m2mValidation = await CommonStockValidator.validateM2MLimits(reqData, services);
     if (!m2mValidation.isValid) {
       baseRejectionLog.message = m2mValidation.message;
       await saveLog('rejection', baseRejectionLog);
       return res.status(400).json({ status: 'false', message: m2mValidation.message });
     }
-
-    // 6c. Margin Limit Check (Priority)
-    const marginValidation = await CommonStockValidator.validateMarginLimits(reqData, services);
     if (!marginValidation.isValid) {
       baseRejectionLog.message = marginValidation.message;
       await saveLog('rejection', baseRejectionLog);
       return res.status(400).json({ status: 'false', message: marginValidation.message });
     }
-
     console.log(`[LIMIT-DEBUG][Controller:newLimit] LimitOrderValidator userId=${reqData.userId} scriptId=${reqData.scriptId} marketId=${reqData.marketId} price=${reqData.price} orderType=${reqData.orderType}`);
-    const limitOrderValidation = await LimitOrderValidator.validate(reqData, services, liveStock);
     console.log(`[LIMIT-DEBUG][Controller:newLimit] Result isValid=${limitOrderValidation.isValid} message=${limitOrderValidation.message || ''}`);
     if (!limitOrderValidation.isValid) {
       console.log(`[LIMIT-DEBUG][Controller:newLimit] BLOCKED userId=${reqData.userId} marketId=${reqData.marketId} scriptId=${reqData.scriptId} reason=${limitOrderValidation.message}`);

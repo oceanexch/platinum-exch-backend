@@ -1374,13 +1374,45 @@ exports.getDownlineLevelUsers = async (userId, level, filterMode = 'all') => {
     } else {
       filter.parentIds = userId;
     }
-    
+
     const users = await userModel
       .find(filter)
-      .select({ accountName: 1, accountCode: 1, accountType: 1, loginIP: 1, lastLogin: 1, createdAt: 1, marketAccess: 1 })
+      .select({ accountName: 1, accountCode: 1, accountType: 1, loginIP: 1, lastLogin: 1, createdAt: 1, marketAccess: 1, createdBy: 1, status: 1, 'basicDetails.onlyPositionSquareOff': 1 })
       .lean();
 
-    return users;
+    // Batch-fetch createdBy user details (name + accountCode)
+    const creatorIds = [...new Set(
+      users.map(u => u.createdBy?.userId).filter(id => id && mongoose.isValidObjectId(id))
+    )];
+    const creatorDocs = creatorIds.length
+      ? await userModel
+          .find({ _id: { $in: creatorIds } })
+          .select('_id accountName accountCode')
+          .lean()
+      : [];
+    const creatorMap = {};
+    creatorDocs.forEach(c => {
+      creatorMap[c._id.toString()] = {
+        accountName: c.accountName,
+        accountCode: c.accountCode
+      };
+    });
+
+    return users.map((user) => {
+      const creatorId = user.createdBy?.userId?.toString();
+      const createdByInfo = creatorId && creatorMap[creatorId]
+        ? creatorMap[creatorId]
+        : { accountName: null, accountCode: null };
+
+      return {
+        ...user,
+        createdBy: {
+          ...user.createdBy,
+          accountName: createdByInfo.accountName,
+          accountCode: createdByInfo.accountCode
+        }
+      };
+    });
   } catch (error) {
     console.error('Error fetching data:', error);
     throw error;

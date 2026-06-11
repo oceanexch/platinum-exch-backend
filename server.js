@@ -95,7 +95,7 @@ const { HEADER_INDICES } = require("./src/config/marketConstants");
 // NEW Trading API WebSocket URL
 const WS_SERVER_URL = process.env.NEW_WS_URL || "wss://feed.apollo.in.net/test/ws/";
 
-const PORT = process.env.PORT || 4001;
+const PORT = process.env.PORT || 3004;
 
 const NUM_WORKERS = process.env.WORKERS
   ? parseInt(process.env.WORKERS, 10)
@@ -130,7 +130,8 @@ if (isPrimary) {
     "M2M_EVENTS",
     "SOCKET_FORCE_LOGOUT",
     "DAILY_HIGH_LOW",
-    "limit-order-executed"
+    "limit-order-executed",
+    "position-update"
   ];
 
   // Subscribe to system channels (Async)
@@ -778,6 +779,40 @@ if (isPrimary) {
         }
       } catch (err) {
         console.error(`Worker ${process.pid} limit-order-executed error:`, err);
+      }
+      return;
+    }
+
+    // POSITION UPDATE events
+    if (msg.channel === "position-update") {
+      try {
+        const payload = JSON.parse(msg.message);
+        const { userId, parentIds, ...positionData } = payload;
+
+        if (userId) {
+          io.local.to(`user:${userId}`).emit("position-update", {
+            ...positionData,
+            userId,
+            isParent: false,
+          });
+        }
+
+        if (Array.isArray(parentIds) && parentIds.length) {
+          const emitted = new Set();
+          parentIds.forEach(pid => {
+            const key = pid.toString();
+            if (!emitted.has(key)) {
+              emitted.add(key);
+              io.local.to(`user:${pid}`).emit("position-update", {
+                ...positionData,
+                userId,
+                isParent: true,
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.error(`Worker ${process.pid} position-update error:`, err);
       }
       return;
     }

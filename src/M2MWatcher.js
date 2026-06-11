@@ -216,10 +216,9 @@ const runM2MWatcher = async () => {
 
                             //                             console.log(`[M2M-WATCHER] !!! BREACH RECORDED !!! User: ${user.accountCode}, Type: ${status.type}, M2M: ${status.m2m}, AutoSquare: ${status.autoSquare}`);
 
+                            await cancelPendingOrdersInGroups(user._id, [group]);
                             if (status.autoSquare) {
                                 await AutoSquareService.executeAutoSquareOff(user._id, valan._id, group, status.type);
-                                // For individual breach, also cancel pending orders if square-off is on
-                                await cancelPendingOrdersInGroups(user._id, [group]);
                             }
 
                             publishM2MEvent({
@@ -238,8 +237,11 @@ const runM2MWatcher = async () => {
                                     message: status.message + (status.autoSquare ? " (Auto squared off)" : "")
                                 }
                             });
-                        } else if (status.isHit && status.autoSquare) {
-                            await AutoSquareService.executeAutoSquareOff(user._id, valan._id, group, status.type);
+                        } else if (status.isHit) {
+                            await cancelPendingOrdersInGroups(user._id, [group]);
+                            if (status.autoSquare) {
+                                await AutoSquareService.executeAutoSquareOff(user._id, valan._id, group, status.type);
+                            }
                         } else if (isNewThresholdAlert) {
                             await Squareoff.create({
                                 label: `M2M Alert - ${group}`,

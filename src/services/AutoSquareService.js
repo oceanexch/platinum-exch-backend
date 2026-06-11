@@ -11,7 +11,7 @@ const MonitorService = require("./MonitorService");
 const M2MService = require("./M2MService");
 const UserScript = require("../models/UserScriptModel");
 const { redisClient } = require("../config/redis");
-const { getTimeByMarket } = require("./SettingService");
+const { getTimeByMarket, getHolidayByFilter } = require("./SettingService");
 
 /**
  * Get user details for auto square-off
@@ -86,9 +86,23 @@ const executeAutoSquareOff = async (userId, valanId, marketGroup, reason) => {
         let squaredCount = 0;
         const errors = [];
 
+        // Skip all if entire market group is closed (timing)
+        const allMarketsClosed = await areAllMarketsClosedForSquareOff(marketIds);
+
         // Process each position
         for (const position of positions) {
             try {
+                if (allMarketsClosed) continue;
+
+                // Skip only this position if its specific market is on holiday
+                const nowTs = moment().valueOf();
+                const onHoliday = await getHolidayByFilter({
+                    marketId: position.marketId,
+                    startDate: { $lte: nowTs },
+                    endDate: { $gte: nowTs }
+                });
+                if (onHoliday) continue;
+
                 const result = await squareOffPosition(position, user, valanId, reason);
                 if (result) squaredCount++;
             } catch (error) {
@@ -142,6 +156,15 @@ const isMarketOpenForSquareOff = async (marketId) => {
     return now >= marketOpen && now <= marketClose;
 };
 
+// All markets in the group must be closed (timing) before we skip square-off
+const areAllMarketsClosedForSquareOff = async (marketIds) => {
+    if (!marketIds || marketIds.length === 0) return false;
+    for (const marketId of marketIds) {
+        if (await isMarketOpenForSquareOff(marketId)) return false;
+    }
+    return true;
+};
+
 /**
  * Square off a single position
  * @param {Object} position - Position to square off
@@ -150,12 +173,6 @@ const isMarketOpenForSquareOff = async (marketId) => {
  * @param {String} reason - Reason for square off (e.g., "M2M Loss", "M2M Profit")
  */
 const squareOffPosition = async (position, user, valanId, reason) => {
-    // Skip if market is already closed as per timing rules
-    const isMarketOpen = await isMarketOpenForSquareOff(position.marketId);
-    if (!isMarketOpen) {
-        return;
-    }
-
     const netQty = position.buyQuantity - position.sellQuantity;
 
     if (netQty === 0) {

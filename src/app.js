@@ -17,6 +17,7 @@ const voiceRoutes = require("./routes/VoiceRoute");
 const monitorRoutes = require("./routes/MonitorRoute");
 const dailyHighLowRoutes = require("./routes/DailyHighLowRoute");
 // const analyticsRoutes = require('./routes/analyticsRoutes');
+const extractClientIp = require('./middlewares/ipExtractMiddleware');
 const appVersionRoutes = require('./routes/appVersionRoutes');
 // Initialize Express app
 const app = express();
@@ -28,22 +29,25 @@ app.set('trust proxy', true);
 app.timeout = 90000; // 90 seconds
 
 // ----- CORS: handle OPTIONS first and allow origins -----
-const allowedHosts = ['172.236.176.175', '150.107.238.224', '192.168.0.160', 'localhost', '127.0.0.1'];
+const allowedOrigins = [
+  'https://platinum-exch.com',
+  'https://www.platinum-exch.com',
+  'http://localhost',
+  'http://localhost:4004',
+  'http://localhost:4200',
+  'http://127.0.0.1',
+  'http://192.168.0.160'
+];
 function isOriginAllowed(origin) {
   if (!origin || typeof origin !== 'string') return true;
-  try {
-    const u = new URL(origin);
-    return allowedHosts.includes(u.hostname);
-  } catch (e) {
-    return false;
-  }
+  return allowedOrigins.includes(origin);
 }
 function setCorsHeaders(req, res) {
   const origin = req.headers.origin;
   if (origin && isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   } else {
-    res.setHeader('Access-Control-Allow-Origin', allowedHosts[0] ? `http://${allowedHosts[0]}` : '*');
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0] || '*');
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -62,7 +66,7 @@ app.use((req, res, next) => {
 const corsOptions = {
   origin: (origin, callback) => {
     const allow = !origin || isOriginAllowed(origin);
-    callback(null, allow ? (origin || `http://${allowedHosts[0]}`) : false);
+    callback(null, allow ? (origin || allowedOrigins[0]) : false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
@@ -77,7 +81,7 @@ app.use(helmet({
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
+app.use(extractClientIp);
 // Serve static files from the uploads directory with CORS enabled
 app.use('/uploads', cors(corsOptions), express.static(path.join(__dirname, '../uploads')));
 
@@ -99,6 +103,9 @@ app.use("/api/voice", voiceRoutes);
 app.use("/api/dailyhighlow", dailyHighLowRoutes);
 // app.use('/api/analytics', analyticsRoutes);
 app.use('/api/app-version', appVersionRoutes);
+app.use('/api/test', (req, res) => {
+  return res.status(200).json({ message: "Backend working fine...." });
+});
 
 
 module.exports = app;

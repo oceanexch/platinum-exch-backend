@@ -1,5 +1,6 @@
 const { verifyAccessToken } = require('../services/TokenService');
 const User = require('../models/UserModel');
+const { isVpnIp, logVpnRejection } = require('./vpnCheckMiddleware');
 
 const authenticateJWT = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -80,7 +81,12 @@ const authenticateJWT = async (req, res, next) => {
       isDemo: user.demoid || false                    // Is this a demo account?
     };
 
-    req.ip = req.ip.replace('::ffff:', '');
+    const vpn = await isVpnIp(req.clientIp);
+    if (vpn) {
+      logVpnRejection({ ip: req.clientIp, userId: user._id, parentIds: user.parentIds });
+      return res.status(403).json({ status: false, message: 'VPN/proxy access is not allowed' });
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Invalid or expired token' });

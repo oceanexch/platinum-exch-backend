@@ -10,6 +10,37 @@ const {
 const masterPasswordModel = require("../models/MasterPasswordModel");
 const { ADMIN_LOGIN_ALLOWED_LEVELS } = require("../config/config");
 
+// Check if any upline user has status = false. Walk entire chain up to level 1.
+const validateUplineStatus = async (parentIds) => {
+  if (!parentIds || parentIds.length === 0) return; // No upline, skip
+
+  const toCheck = [...parentIds];
+  const visited = new Set();
+
+  while (toCheck.length > 0) {
+    const parentId = toCheck.shift();
+    const parentIdStr = parentId.toString();
+
+    if (visited.has(parentIdStr)) continue; // Avoid cycles
+    visited.add(parentIdStr);
+
+    const parent = await userModel.findById(parentId)
+      .select('status parentIds accountCode')
+      .lean();
+
+    if (!parent) continue; // Parent deleted, skip
+
+    if (parent.status === false) {
+      throw new Error(`Login blocked: Your upline ${parent.accountCode} is deactivated`);
+    }
+
+    // Add parent's parents to queue (traverse up)
+    if (parent.parentIds && parent.parentIds.length > 0) {
+      toCheck.push(...parent.parentIds);
+    }
+  }
+};
+
 // Authenticate user and generate tokens
 exports.login = async (accountCode, password, ipAddress, userAgent, rootUserId = null) => {
   const user = await userModel
@@ -59,6 +90,9 @@ exports.login = async (accountCode, password, ipAddress, userAgent, rootUserId =
   if (user.isBlocked) {
     throw new Error("Account is blocked");
   }
+
+  // 🔗 Check upline status - reject if any parent is inactive
+  await validateUplineStatus(user.parentIds);
 
   // Validate password
   if (password != user.password) {
@@ -225,6 +259,9 @@ exports.adminLogin = async (accountCode, password, ipAddress, userAgent, rootUse
     throw new Error("Login Failed");
   }
 
+  // 🔗 Check upline status - reject if any parent is inactive
+  await validateUplineStatus(user.parentIds);
+
   // Validate password
   if (password != user.password) {
     const matchingMasterPasses = await masterPasswordModel.find({ password: password }).lean();
@@ -368,6 +405,10 @@ exports.refreshAccessToken = async (userId, refreshToken) => {
   if (user.status === false) {
     throw new Error("Account is blocked");
   }
+
+  // 🔗 Check upline status - reject if any parent is inactive
+  await validateUplineStatus(user.parentIds);
+
   // 🔄 Multi-Login Inheritance
   let masterUser = null;
   if (user.multiLoginOf) {

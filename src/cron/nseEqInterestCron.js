@@ -154,6 +154,49 @@ async function calculateHoldingAndBookedPnL(userId, valanId, date) {
 }
 
 /**
+ * Aggregate holding worth and booked P&L across ALL downline users of an admin.
+ * Calculates per-user (can't mix avg prices across users) then sums results.
+ * @param {ObjectId} adminUserId
+ * @param {ObjectId} valanId
+ * @param {string} date
+ * @returns {Promise<{holdingWorth: number, bookedPnl: number}>}
+ */
+async function calculateDownlineHoldingAndBookedPnL(adminUserId, valanId, date) {
+  try {
+    console.log(`[calculateDownlineHoldingAndBookedPnL] Starting for admin ${adminUserId}, valan ${valanId}`);
+
+    // All users anywhere in admin's downline tree have adminUserId in their parentIds array
+    const downlineUsers = await UserModel.find({
+      parentIds: adminUserId,
+      isDeleted: false
+    }).select('_id').lean();
+
+    if (!downlineUsers || downlineUsers.length === 0) {
+      console.log(`[calculateDownlineHoldingAndBookedPnL] No downline users found for admin ${adminUserId}`);
+      return { holdingWorth: 0, bookedPnl: 0 };
+    }
+
+    console.log(`[calculateDownlineHoldingAndBookedPnL] Found ${downlineUsers.length} downline users`);
+
+    let totalHoldingWorth = 0;
+    let totalBookedPnl = 0;
+
+    for (const downlineUser of downlineUsers) {
+      const result = await calculateHoldingAndBookedPnL(downlineUser._id, valanId, date);
+      totalHoldingWorth += result.holdingWorth;
+      totalBookedPnl += result.bookedPnl;
+    }
+
+    console.log(`[calculateDownlineHoldingAndBookedPnL] TOTAL for admin ${adminUserId}: holdingWorth=₹${totalHoldingWorth.toFixed(2)}, bookedPnl=₹${totalBookedPnl.toFixed(2)}`);
+
+    return { holdingWorth: totalHoldingWorth, bookedPnl: totalBookedPnl };
+  } catch (err) {
+    console.error(`[calculateDownlineHoldingAndBookedPnL] Error for admin ${adminUserId}:`, err.message);
+    return { holdingWorth: 0, bookedPnl: 0 };
+  }
+}
+
+/**
  * Calculates and persists daily NSE-EQ loan interest for every eligible user.
  *
  * OLD Interest formula (per day):
@@ -227,6 +270,19 @@ exports.chargeNseEqDailyInterest = async (forDate = null, forValanId = null) => 
 
     console.log(`[NSE-EQ Interest Cron] Found ${users.length} eligible users.`);
 
+    // Pre-build set of user IDs that are admins (appear as parent in any user's parentIds)
+    const parentDocs = await UserModel.find(
+      { parentIds: { $exists: true, $ne: [] }, isDeleted: false },
+      { parentIds: 1, _id: 0 }
+    ).lean();
+    const adminUserIdSet = new Set();
+    for (const doc of parentDocs) {
+      for (const pid of (doc.parentIds || [])) {
+        adminUserIdSet.add(pid.toString());
+      }
+    }
+    console.log(`[NSE-EQ Interest Cron] Identified ${adminUserIdSet.size} admin/broker user IDs`);
+
     for (const user of users) {
       try {
         // 1. Skip if user has no parents (top-level users like Super Admin don't pay interest)
@@ -283,18 +339,30 @@ exports.chargeNseEqDailyInterest = async (forDate = null, forValanId = null) => 
         let bookedPnl = 0;
 
         if (isLinkedWithLedger) {
-          // NEW LOGIC: Calculate based on actual loan usage with unrealized P&L
-          console.log(`[NSE-EQ Interest Cron] User ${user._id}: Using NEW LOGIC (Ledger-based)`);
-          const result = await calculateHoldingAndBookedPnL(user._id, currentValan._id, today);
+          const isAdmin = adminUserIdSet.has(user._id.toString());
+
+          let result;
+          if (isAdmin) {
+            // ADMIN LOGIC: aggregate ALL downline users' holding + bookedPnl
+            console.log(`[NSE-EQ Interest Cron] User ${user._id}: ADMIN - aggregating downline usage`);
+            result = await calculateDownlineHoldingAndBookedPnL(user._id, currentValan._id, today);
+          } else {
+            // USER LOGIC: own positions only
+            console.log(`[NSE-EQ Interest Cron] User ${user._id}: Using NEW LOGIC (Ledger-based)`);
+            result = await calculateHoldingAndBookedPnL(user._id, currentValan._id, today);
+          }
+
           holdingWorth = result.holdingWorth;
           bookedPnl = result.bookedPnl;
 
           const availableMargin = totalMargin * (marginPer / 100);
-          
-          // Interestable amount = MAX(0, holdingWorth - availableMargin + bookedPnL)
+
+          // interestableAmount = MAX(0, holdingWorth + bookedPnl - availableMargin)
+          // Admin:   holdingWorth = SUM of all downlines' holding, bookedPnl = SUM of all downlines' P&L
+          // Regular: holdingWorth = own open positions value
           interestableAmount = Math.max(0, holdingWorth - availableMargin + bookedPnl);
 
-          console.log(`[NSE-EQ Interest Cron] User ${user._id}: holdingWorth=₹${holdingWorth.toFixed(2)}, availableMargin=₹${availableMargin.toFixed(2)}, bookedPnl=₹${bookedPnl.toFixed(2)}, interestableAmount=₹${interestableAmount.toFixed(2)}`);
+          console.log(`[NSE-EQ Interest Cron] User ${user._id} (${isAdmin ? 'ADMIN' : 'USER'}): holdingWorth=₹${holdingWorth.toFixed(2)}, availableMargin=₹${availableMargin.toFixed(2)}, bookedPnl=₹${bookedPnl.toFixed(2)}, interestableAmount=₹${interestableAmount.toFixed(2)}`);
 
           // If no loan is being used, skip
           if (interestableAmount <= 0.01) {

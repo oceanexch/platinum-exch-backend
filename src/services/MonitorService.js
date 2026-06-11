@@ -263,7 +263,7 @@ function formatMessage(eventType, monitoredUser, actorUser, details = {}, explic
     );
   }
 
-  lines.push(``, `\\-\\-\\-`, `_Sent by Ocean Exchange Monitor_`);
+  lines.push(``, `\\-\\-\\-`, `_Sent by Platinum Exchange Monitor_`);
 
   return lines.join('\n');
 }

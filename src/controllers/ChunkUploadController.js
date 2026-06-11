@@ -304,7 +304,7 @@ async function mergeChunks(uploadId, session, req) {
   // console.log('Database entry created:', newVersion._id);
   
   // Generate download link
-  const downloadLink = `${req.protocol}://${req.get('host')}/OceanExch_staging/api/app-version/download/${newVersion._id}`;
+  const downloadLink = `${req.protocol}://${req.get('host')}/platinum-back/api/app-version/download/${newVersion._id}`;
   
   // console.log('=== Merge Process Complete ===');
   

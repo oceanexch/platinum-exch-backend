@@ -1,6 +1,6 @@
 "use strict";
 /**
- * i18n.js — Dynamic translation for Ocean Exchange Bot
+ * i18n.js — Dynamic translation for Platinum Exchange Bot
  *
  * Uses MyMemory Translation API (free, no API key required):
  *   https://mymemory.translated.net/
@@ -27,7 +27,7 @@ async function getSupportedLanguages() {
     if (_langsCache && now - _langsAt < CACHE_TTL_MS) return _langsCache;
 
     try {
-        const res = await axios.get(`${MYMEMORY_BASE}/languages?de=oceanexchangebot@noreply.com`, { timeout: 3000 });
+        const res = await axios.get(`${MYMEMORY_BASE}/languages?de=platinumexchangebot@noreply.com`, { timeout: 3000 });
         const raw = res.data?.data?.isoLangs ?? {};
 
         _langsCache = Object.entries(raw).map(([code, info]) => ({
@@ -81,7 +81,7 @@ async function _translateChunk(text, targetLang) {
             params: {
                 q: text,
                 langpair: `${SOURCE_LANG}|${targetLang}`,
-                de: "oceanexchangebot@noreply.com",
+                de: "platinumexchangebot@noreply.com",
             },
             timeout: 6000,
         });
@@ -145,9 +145,9 @@ async function getLangDisplay(code) {
 
 // ── Static UI strings (English only — translated on-the-fly when needed) ──────
 const STRINGS = {
-    welcome_start: "👋 Welcome to *🌊 Ocean Exchange*!\n\nEnter your *Account Code* to begin:",
+    welcome_start: "👋 Welcome to *💎 Platinum Exchange*!\n\nEnter your *Account Code* to begin:",
     welcome_back: (n) => `👋 Welcome back, *${n}*!`,
-    select_option: "🌊 *Ocean Exchange*\n\nSelect an option from the menu below:",
+    select_option: "💎 *Platinum Exchange*\n\nSelect an option from the menu below:",
     loading: "⏳ Loading...",
     no_data: "📭 No data found.",
     choose_view_download: "How would you like this report?",

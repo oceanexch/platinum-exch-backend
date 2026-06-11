@@ -63,7 +63,7 @@ exports.createVersion = async (req, res) => {
     const newVersion = await createAppVersion(versionData);
     
     // Generate download link
-    const downloadLink = `${req.protocol}://${req.get('host')}/oceanexch/api/app-version/download/${newVersion._id}`;
+    const downloadLink = `${req.protocol}://${req.get('host')}/platinum-back/api/app-version/download/${newVersion._id}`;
     
     res.status(201).json({
       status: true,
@@ -113,7 +113,7 @@ exports.getAllVersions = async (req, res) => {
     // Add download links to each version
     const versionsWithLinks = versions.map(version => ({
       ...version.toObject(),
-      downloadLink: `${req.protocol}://${req.get('host')}/oceanexch/api/app-version/download/${version._id}`
+      downloadLink: `${req.protocol}://${req.get('host')}/platinum-back/api/app-version/download/${version._id}`
     }));
     
     res.status(200).json({
@@ -143,7 +143,7 @@ exports.getVersionById = async (req, res) => {
     // Add download link
     const versionWithLink = {
       ...version.toObject(),
-      downloadLink: `${req.protocol}://${req.get('host')}/oceanexch/api/app-version/download/${version._id}`
+      downloadLink: `${req.protocol}://${req.get('host')}/platinum-back/api/app-version/download/${version._id}`
     };
     
     res.status(200).json({
@@ -187,7 +187,7 @@ exports.getLatest = async (req, res) => {
     // Add download link
     const versionWithLink = {
       ...version.toObject(),
-      downloadLink: `${req.protocol}://${req.get('host')}/oceanexch/api/app-version/download/${version._id}`
+      downloadLink: `${req.protocol}://${req.get('host')}/platinum-back/api/app-version/download/${version._id}`
     };
     
     res.status(200).json({

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($logo = [System.IO.File]::ReadAllBytes\\('d:\\\\platinum-back\\\\logo\\\\platinum-logo.jpeg'\\); $base64 = [System.Convert]::ToBase64String\\($logo\\); Write-Output $base64)"
+    ]
+  }
+}

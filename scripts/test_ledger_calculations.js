@@ -50,7 +50,7 @@ async function testLedgerCalculations() {
     console.log('[Test] Starting ledger calculation validation...');
     
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/oceanexch');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/platinum-exch');
     console.log('[Test] Connected to MongoDB');
 
     // Test each scenario

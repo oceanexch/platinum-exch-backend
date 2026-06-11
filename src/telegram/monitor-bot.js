@@ -1,10 +1,10 @@
 'use strict';
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * 🌊 Ocean Exchange — Telegram Monitoring Bot
+ * 💎 Platinum Exchange — Telegram Monitoring Bot
  * ─────────────────────────────────────────────────────────────────────────────
  * Run:        node src/telegram/monitor-bot.js
- * Production: pm2 start src/telegram/monitor-bot.js --name ocean-monitor-bot
+ * Production: pm2 start src/telegram/monitor-bot.js --name platinum-monitor-bot
  * ─────────────────────────────────────────────────────────────────────────────
  * This bot is dedicated to sending real-time activity alerts to admins.
  * It uses BOT_TOKEN_MONITOR and its own chat-binding fields.
@@ -159,7 +159,7 @@ bot.onText(/\/start/, async (msg) => {
     s.state = 'WAITING_CODE';
     bot.sendMessage(
       chatId,
-      '👋 *Welcome to Ocean Exchange Monitoring*\n\nPlease enter your *Account Code* to link this Telegram account:',
+      '👋 *Welcome to Platinum Exchange Monitoring*\n\nPlease enter your *Account Code* to link this Telegram account:',
       { parse_mode: 'Markdown' }
     );
   } catch (err) {
@@ -266,7 +266,7 @@ bot.on('message', async (msg) => {
       const groupName = esc(msg.chat.title || 'this group');
       // Welcome in group
       bot.sendMessage(chatId,
-        `👋 *Ocean Exchange Monitor Bot*\n\nSend \`/linkgroup\` here to link this group for monitoring alerts\\.\nOnly one owner can link per group\\.`,
+        `👋 *Platinum Exchange Monitor Bot*\n\nSend \`/linkgroup\` here to link this group for monitoring alerts\\.\nOnly one owner can link per group\\.`,
         { parse_mode: 'MarkdownV2' }
       ).catch(() => {});
       // DM the person who added bot (if they're linked)

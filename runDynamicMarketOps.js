@@ -8,7 +8,7 @@
  *   node runDynamicMarketOps.js
  *   
  * Crontab:
- *   * * * * * cd /var/www/ocean-code/OceanExch_staging && node runDynamicMarketOps.js >> /var/log/ocean-exch/market-ops.log 2>&1
+ *   * * * * * cd /var/www/platinum-code/Platinumexch_staging && node runDynamicMarketOps.js >> /var/log/platinum-exch/market-ops.log 2>&1
  */
 
 require('dotenv').config();

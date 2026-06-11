@@ -1,10 +1,10 @@
 "use strict";
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * 🌊 Ocean Exchange — Telegram Bot
+ * 💎 Platinum Exchange — Telegram Bot
  * ─────────────────────────────────────────────────────────────────────────────
  * Run:        node src/telegram/bot.js
- * Production: pm2 start src/telegram/bot.js --name ocean-exchange-bot
+ * Production: pm2 start src/telegram/bot.js --name platinum-exchange-bot
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -20,7 +20,7 @@ const { generatePDF } = require("./pdfHelper");
 const { redisClient } = require("../config/redis");
 const { v4: uuidv4 } = require("uuid"); // For unique report IDs
 const BASE_URL =
-  process.env.PUBLIC_BASE_URL || "https://oceanexch.org/oceanexch"; // Public URL for PDF view (includes app path prefix)
+  process.env.PUBLIC_BASE_URL || "https://platinum-exch.com/platinum-back"; // Public URL for PDF view (includes app path prefix)
 const VIEW_PDF_URL = `${BASE_URL}/api/report/view-pdf`;
 const {
   t,
@@ -35,9 +35,9 @@ const H = require("./handlers");
 // ── DB ────────────────────────────────────────────────────────────────────────
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => console.log("[OceanExchange] MongoDB connected"))
+  .then(() => console.log("[PlatinumExchange] MongoDB connected"))
   .catch((err) => {
-    console.error("[OceanExchange] DB error:", err);
+    console.error("[PlatinumExchange] DB error:", err);
     process.exit(1);
   });
 
@@ -60,30 +60,30 @@ bot.on('polling_error', (err) => {
 
   if (code === 'EFATAL') {
     if (!_restartTimer) {
-      console.error(`[OceanExchange] EFATAL — ${msg}`);
-      console.log(`[OceanExchange] Restarting polling in ${_restartDelay / 1000}s...`);
+      console.error(`[PlatinumExchange] EFATAL — ${msg}`);
+      console.log(`[PlatinumExchange] Restarting polling in ${_restartDelay / 1000}s...`);
       _restartTimer = setTimeout(() => {
         _restartTimer = null;
         bot.startPolling({ restart: true })
           .then(() => {
-            console.log('[OceanExchange] Polling restarted successfully');
+            console.log('[PlatinumExchange] Polling restarted successfully');
             _restartDelay = 5_000;
           })
           .catch((e) => {
-            console.error('[OceanExchange] Restart failed:', e.message);
+            console.error('[PlatinumExchange] Restart failed:', e.message);
             _restartDelay = Math.min(_restartDelay * 2, 120_000);
           });
       }, _restartDelay);
     }
   } else {
-    console.warn(`[OceanExchange] Polling warning [${code}]: ${msg}`);
+    console.warn(`[PlatinumExchange] Polling warning [${code}]: ${msg}`);
   }
 });
 
 // ── Legacy Markdown Escaping ──────────────────────────────────────────────────
 // Only escape symbols special to legacy Markdown (*, _, `, [) to avoid "\" in names/numbers.
 const esc = (s) => String(s ?? "").replace(/([_*`\[\\])/g, "\\$1");
-console.log("[OceanExchange] Bot running...");
+console.log("[PlatinumExchange] Bot running...");
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 // Keyed by msg.from.id (Identity Level) instead of msg.chat middle-man.

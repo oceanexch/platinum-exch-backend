@@ -47,6 +47,12 @@ function buildTableHtml(columns, rows, rowColors) {
 }
 
 function generateHTML(title, sections = [], subtitle = "") {
+  const path = require("path");
+  const fs = require("fs");
+  const logoFile = path.resolve(__dirname, "../../logo/platinum-logo.jpeg");
+  const logoPath = fs.existsSync(logoFile)
+    ? `data:image/jpeg;base64,${fs.readFileSync(logoFile).toString("base64")}`
+    : "";
   const escHtml = (s) =>
     String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -117,13 +123,13 @@ function generateHTML(title, sections = [], subtitle = "") {
     }
     </style></head><body><div class="container">
     <div class="hdr">
-        <h1><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAllBMVEVHcExVrO5VrO5VrO5VrO5VrO5VrO5VrO5VrO5VrO5VrO4iZpkiZplVrO4iZpkiZplVrO4iZpkiZpkiZpkiZpkiZpkiZplVrO4iZplVrO4iZplVrO4iZpkiZpk8icQ4hL0sdKpVrO4iZpk8icQveK5SqOklap5Ln94ob6RIm9ksc6k1gLlCks5Po+NFltM/jck4hb4yfLTylKViAAAAIXRSTlMAIN9Qz79AYIDvEO+/nyAwMK9gQJ+AEK/fj3Bwz1BA31DIYdf8AAAB90lEQVR42u3X6XKbMBSGYTCLBPG+xlnafhIY707u/+ZCiLFcJGEJ/KMz9XsBzxwdEGM7j/6dwjCkr2HotjFc0uvgUkCHjZSY+KjWoa71MDSCsp4VFVNoi6i5QyLU5RsO5Qa4UeSZOF6E25HbzhKiNlIPuIcUBzCudk8LmBe59udKN3kZKgVah0JV9rFmPyU8M1pTqGQSdt36lOJSR7PoCHKcVVtxQRHTRaef18RzN+8tp444t1A5nsLZXpCn6fvc+Wkwnv4uh1JBHUiJeWaFIvoVoCg0emL8Ms5AcYCOBOk2fVA7guoFS6OBkhKaOBbJG8pKZ2rjEEjtSqhvAwWQWp2dkY3jQmrDzo1toFdI8UYn82teRhsnhv7hP9tAHuTWTaAl5FhZyxVh22TZUJQ0ePwhUPNid1vdD2DP7O8shaIDsx9pAdRtm73Y3Vj92djA4lskl67El99QgroTs5WgactE4zbQYcVEo74eiD1KwxoI2bX0NJtrHBohz4/1EDaFJKh+3W+hRQ2EbM3+ajSuWn8ClNVBSHes0tv0ZVLcmvnkfdZNUphBwCZh2tZHQIb01G6lZLZ7wAwSHXlSwZLTAbCBROlmzzlPkg/OjxkUOWjQA3pA/xHk4y75DsFdIk7bkcS/wGGE1kVD51tqPZOfO0UkaMWQb+MLoCCNuLnaMSMAAAAASUVORK5CYII=" alt="🌊" width="30" height="30" style="vertical-align:middle;flex:none"> Ocean Exchange</h1>
+        <h1><img src="${logoPath}" alt="💎" width="30" height="30" style="vertical-align:middle;flex:none"> Platinum Exchange</h1>
         <h2>${escHtml(title)}</h2>
         ${subtitle ? `<div class="sub">${escHtml(subtitle)}</div>` : ""}
     </div>
     ${body.replace(/<table>/g, '<div class="table-wrapper"><table>').replace(/<\/table>/g, "</table></div>")}
     <div class="meta">Report Generated: ${now}</div>
-    <div class="footer">© ${new Date().getFullYear()} Ocean Exchange Trading Systems • Secure & Confidential</div>
+    <div class="footer">© ${new Date().getFullYear()} Platinum Exchange Trading Systems • Secure & Confidential</div>
     </div></body></html>`;
 }
 

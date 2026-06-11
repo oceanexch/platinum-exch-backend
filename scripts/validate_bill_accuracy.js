@@ -28,7 +28,7 @@ async function validateBillAccuracy(options = {}) {
     
     // Connect to MongoDB only if we need to manage the connection
     if (manageConnection) {
-      await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/oceanexch');
+      await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/platinum-exch');
       console.log('[Validation] Connected to MongoDB');
     } else {
       // Verify existing connection

@@ -1,6 +1,6 @@
 "use strict";
 /**
- * handlers.js — Data-fetching helpers for Ocean Exchange Bot.
+ * handlers.js — Data-fetching helpers for Platinum Exchange Bot.
  * Each exported function fetches data and returns { textLines, pdfSections, title, subtitle }
  * which the bot.js uses for PDF responses.
  */
